@@ -29,10 +29,38 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Prepare chart-only site
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import shutil
+
+          root = Path.cwd()
+          site = Path(os.environ["RUNNER_TEMP"]) / "chart-site"
+          charts = sorted(root.glob("Gantt_Paciente_*.html"))
+          index = root / "index.html"
+          if not index.is_file() or not charts:
+              raise RuntimeError("The site requires index.html and at least one chart page.")
+
+          # Preserve chart URLs while excluding all other checkout contents.
+          site.mkdir()
+          for page in [index, *charts]:
+              if page.is_symlink() or not page.is_file():
+                  raise RuntimeError(f"Expected a regular HTML file: {page.name}")
+              shutil.copy2(page, site / page.name)
+          for assets in sorted(root.glob("Gantt_Paciente_*_files")):
+              if not assets.is_dir() or assets.is_symlink():
+                  raise RuntimeError(f"Expected a regular chart asset directory: {assets.name}")
+              if any(path.is_symlink() for path in assets.rglob("*")):
+                  raise RuntimeError(f"Chart assets must not contain symbolic links: {assets.name}")
+              shutil.copytree(assets, site / assets.name)
+          print(f"Prepared index.html, {len(charts)} charts and their companion assets.")
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: ${{ runner.temp }}/chart-site
 
       - name: Deploy to GitHub Pages
         id: deployment
